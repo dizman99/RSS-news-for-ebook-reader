@@ -1,0 +1,26 @@
+{
+  "feeds": [
+    {
+      "enabled": true,
+      "keyword": "Computerbase",
+      "url": "https://www.computerbase.de/rss/news.xml"
+    },
+    {
+      "enabled": true,
+      "keyword": "Tagesschau",
+      "url": "https://www.tagesschau.de/xml/rss2/"
+    },
+    {
+      "enabled": true,
+      "keyword": "heise",
+      "url": "https://www.heise.de/rss/heise-atom.xml"
+    }
+  ],
+  "retention_days": 20,
+  "start_time": "17:00",
+  "interval_hours": 4,
+  "end_time": "22:00",
+  "enews_dir": "D:/zz/!eNews-Master/!eNews",
+  "reader_root": "G:/",
+  "reader_master_dir": "D:/zz/!eNews-Master"
+}
