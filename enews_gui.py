@@ -460,6 +460,24 @@ class ENewsWindow(QWidget):
             QMessageBox.warning(self, "Sync", "Reader-Master-Verzeichnis existiert nicht.")
             return
 
+        # --- NEU: Warnung bei leerem Master-Verzeichnis ---
+        master_has_files = any(master_dir.rglob("*"))
+        if not master_has_files:
+            reply_empty = QMessageBox.question(
+                self,
+                "Achtung: PC-Verzeichnis ist leer",
+                f"Das lokale Master-Verzeichnis\n{master_dir}\nenthält keine Dateien.\n\n"
+                f"Wenn du jetzt fortfährst, wird der komplette Inhalt deines "
+                f"eReaders ({reader_root}) GELÖSCHT!\n\n"
+                "Hast du bereits den initialen Pull vom Reader ausgeführt?\n\n"
+                "Trotzdem fortfahren und eReader leeren?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply_empty == QMessageBox.StandardButton.No:
+                return
+        # --- Ende NEU ---
+
         # Bestätigung einholen
         reply = QMessageBox.question(
             self,
@@ -473,7 +491,7 @@ class ENewsWindow(QWidget):
         if reply == QMessageBox.StandardButton.No:
             return
 
-        # Status-Callback
+       # Status-Callback
         def on_status(msg: str):
             self.lbl_status.setText(f"Sync: {msg}")
 
@@ -584,8 +602,12 @@ class ENewsWindow(QWidget):
         # JSON speichern (Datum als Dateiname)
         today = datetime.now().strftime("%Y-%m-%d")
         json_file = enews_dir / f"{today}.json"
-        with json_file.open("w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
+        try:
+            with json_file.open("w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            self.lbl_status.setText(f"Fehler beim Schreiben der JSON-Datei: {e}")
+            return
 
         # ePub erstellen
         epub_file = enews_dir / f"{today}.epub"

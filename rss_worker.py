@@ -18,6 +18,9 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 from lxml import etree  # type: ignore[import-untyped]
+import socket
+
+DEFAULT_FEED_TIMEOUT = 10  # Sekunden, fester Default
 
 # Optional: benutzerdefinierter User-Agent, falls Feeds blockieren
 DEFAULT_USER_AGENT = "eNews-Reader/1.0 (Windows; RSS client)"
@@ -94,54 +97,65 @@ def parse_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 def fetch_feed(url: str, keyword: str) -> Dict[str, Any]:
     """Lädt einen einzelnen Feed und gibt strukturierte Daten zurück."""
-    # Erster Versuch: normal mit feedparser
-    parser = feedparser.parse(url, agent=DEFAULT_USER_AGENT)
-
-    # Wenn bozo und keine Entries, versuche robusten Download mit requests + lxml
-    if parser.bozo and not parser.entries:
+    old_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(DEFAULT_FEED_TIMEOUT)
+    try:
+        # Erster Versuch: normal mit feedparser
         try:
-            resp = requests.get(url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=10)
-            resp.raise_for_status()
-            raw_data = resp.content
-
-            # Versuche, das XML mit lxml zu parsen (repariert oft kleine Fehler)
-            # recover=True erlaubt fehlerhaftes XML
-            recovered = etree.fromstring(raw_data, parser=etree.XMLParser(recover=True, encoding="utf-8"))
-            recovered_data = etree.tostring(recovered, encoding="utf-8", xml_declaration=True, method="xml")
-
-            parser = feedparser.parse(recovered_data)
+            parser = feedparser.parse(url, agent=DEFAULT_USER_AGENT)
         except Exception as e:
-            # Wenn auch das fehlschlägt, bleiben wir beim ursprünglichen Fehler
             return {
                 "keyword": keyword,
                 "url": url,
-                "error": e,
+                "error": str(e),   # <-- str() statt Exception-Objekt
                 "items": [],
             }
 
-    # Fallback: wenn immer noch bozo und keine Entries, melden wir den Fehler
-    if parser.bozo and not parser.entries:
+        # Wenn bozo und keine Entries, versuche robusten Download mit requests + lxml
+        if parser.bozo and not parser.entries:
+            try:
+                resp = requests.get(
+                    url,
+                    headers={"User-Agent": DEFAULT_USER_AGENT},
+                    timeout=DEFAULT_FEED_TIMEOUT,
+                )
+                resp.raise_for_status()
+                raw_data = resp.content
+                recovered = etree.fromstring(
+                    raw_data, parser=etree.XMLParser(recover=True, encoding="utf-8")
+                )
+                recovered_data = etree.tostring(
+                    recovered, encoding="utf-8", xml_declaration=True, method="xml"
+                )
+                parser = feedparser.parse(recovered_data)
+            except Exception as e:
+                return {
+                    "keyword": keyword,
+                    "url": url,
+                    "error": str(e),   # <-- str() statt Exception-Objekt
+                    "items": [],
+                }
+
+        # Fallback: wenn immer noch bozo und keine Entries, melden wir den Fehler
+        if parser.bozo and not parser.entries:
+            return {
+                "keyword": keyword,
+                "url": url,
+                "error": str(getattr(parser, "bozo_exception", "Unbekannter Feed-Fehler")),
+                "items": [],
+            }
+
+        feed_title = parser.feed.get("title", keyword)
+        items = [parse_entry(entry) for entry in parser.entries]
+
         return {
             "keyword": keyword,
             "url": url,
-            "error": getattr(parser, "bozo_exception", None),
-            "items": [],
+            "feed_title": feed_title,
+            "items": items,
         }
-
-    feed_title = parser.feed.get("title", keyword)
-
-    items = []
-    for entry in parser.entries:
-        item = parse_entry(entry)
-        items.append(item)
-
-    return {
-        "keyword": keyword,
-        "url": url,
-        "feed_title": feed_title,
-        "items": items,
-    }
-
+    finally:
+        socket.setdefaulttimeout(old_timeout)
 
 def fetch_feeds(feeds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """

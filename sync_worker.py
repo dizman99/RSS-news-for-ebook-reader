@@ -18,6 +18,7 @@ from typing import Callable, List, Optional, Tuple
 EXCLUDE_PATTERNS = [
     "System Volume Information",
     ".DS_Store",
+    ".crosspoint",
     "$RECYCLE.BIN",
     "Thumbs.db",
     "desktop.ini",
