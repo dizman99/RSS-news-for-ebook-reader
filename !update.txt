@@ -1,0 +1,21 @@
+----------------------------------------------------
+08.09.2026
+- added a pdf conversion option
+  its a poor mans solution. It just extracts text segments form PDFs that have them. In the first attempt I converted it to
+  'floating text'. All there, but allmost unreadable. There is now a bit of formatting, but still not very usable formatting.
+  I see this as an anchor for people who want to get into this stuff and appling some tesseract stuff or the like and
+  source format analysation.
+----------------------------------------------------
+07.09.2026
+- found out, the programm did not work fine with malicious RSS Links.
+  It then hangs in the writing of the JSON file. This is now fixed, there is a Timeout now of 10 seconds, before
+  the thread (rss-feed) is treated as corrupted. Those will be just left out on creating the resulting epub on it,
+  so everything is fine now.
+- found out, that it is possible to sync with an empty master directory.
+  This might even be wished for, if you want to create all from scratch. Nevertheless it syncs that
+  empty directory to your reader then, which thereafter is empty to. In case this just happens accidentally, the 
+  program now checks this occasion and comes up with a warning dialog and which consequences it has if you preceed.
+  You then can still continue with this operation or just break it up back to the dialog level. No harm is done then.
+
+
+
