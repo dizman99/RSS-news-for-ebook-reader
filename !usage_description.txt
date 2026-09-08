@@ -1,0 +1,81 @@
+This program grew in the making.
+Basically it is 2 naturally seperate programs in one, which do work
+together in a way.
+
+Part 1: The RSS reader, that generates an ePub file, that you can read
+on your ebook reader.
+If you want to create an ebook out of your favorite rss-links do
+the following:
+- Go to the top third of the dialog which is labled 'RSS-Feeds'.
+- Click on 'Hinzufügen' to add your rss-link to your ebook.
+  It is good practice to fill in the 'Schlagwort' which builds the
+  heading in the ebook accordingly. If your feed link is from
+  '4players' for instance, then you could name the 'Schlagwort'
+  '4Players'.
+- Do these steps until you have the list of wanted rss-links into
+  this section. They where saved automatically into a config.json
+- the checkboxes are there only to exclude some feeds in the current
+  creation of your ebook. So you can store feeds there, you do not
+  always want to read.
+
+Part 2: The Settings Dialog frame 'Einstellungen'
+Here you can control how often the ebook is created over the day.
+There is no need to use that, but it is getting handy if you want
+to create the books automatically for times you're not at home or
+on vacation. Your 24/7 PC will do the work then and collects on
+eBook per day for you.
+- Retention days (Vorhaltezeit): The amount of days your list is
+  gathered. If you have 20 days selected. The programm will maintain
+  the last 20 days in your eNews directory. Older stuff gets deleted.
+- starting time: If yiu want to create the same ebook over the day,
+  due to possible updates on the rss-sites, you here tell the
+  programm, when it should start with creating the ebook. 
+- interval (in hours): this tells the programs, how many hours
+  should pass, befor a newer ebook would be created.
+- ending time: The last time in the day, the ebook should be created. 
+- !eNews directory (!eNews-Verzeichnis): This is the most important
+  part of this section! Here you tell the program, where to put
+  the created rss-eBook. 
+
+  IT IS VERY CLEVER TO PUT IT ONE SUBDIR BELOW THE READER MASTER-DIRECTORY!
+
+  If you do so, you ensure, that this whole directory will get synced
+  as well, when you press the "PC >> Reader" button.
+  We get to that more closely in the next section.
+
+Part 3: The snchronisation (eReader-Sync)
+- reader root directory (Reader-Root-Verzeichnis): This is your
+  ebook-readers root directory. You may put it there by hand or
+  user the directory chooser 'wählen' button on the right.
+- your local master directory (Reader-Master-Verzeichnis).
+  This will be the location, your whole ebook readers data will reside.
+  It is the clone directory of your ebook reader.
+  You get it filled once you press the long 'vom Reader holen (initial)'
+  button. It might take a long time, depending on the device you use
+  for an ebook reader. But finally you have your reader cloned
+  into that directory. 
+
+  AND FROM THAT POINT ONWARD, THIS IS THE ONLY DIR, THAT MATTERS.
+  ANY CHANGE, ANY DELETIONS, ANY FURTHER EBOOKS GO INTO HERE.
+  YOUR READER JUST ONLY RECEIVES ALL THE CHANGES YOU DO THERE BY PRESSING 'SYNC'.
+
+  No more hassles with the device itself. Also a very nice copy of
+  your reader. Just in case...
+- PDF -> ePub konvertieren: This converts an PDF that it finds while 
+  syncing into an epub book with the same name as the PDF.
+  It does so if the epub of this file does not exist already and if
+  it finds usable text segments in the PDF. The resulting text will go
+  into the epub version of it and after synchronisation, you might
+  find it on your ebook reader. If not, the PDF did not
+  reach the beformentioned requerements.
+  This is a very poor version of a PDF translation. It works, but
+  there is no good resulting format. I hope, that the community goes
+  to this topic to add some Tesseract and/or format analysis of the
+  source. I can't do it :).
+- 'Ausführen' means 'execute'. Press this button to load the feeds,
+  create a JSON from it und turn the JSON unto your daily News epub.
+- Beenden just ends the program.
+
+Remember: First thing to do is 'vom reader holen (initial)' which
+is 'Pull all from your Reader'! You need that base to successfully
+maintain your ebook content here.
