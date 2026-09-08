@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 import rss_worker  # type: ignore[import-untyped]
 import epub_builder  # type: ignore[import-untyped]
 import sync_worker  # type: ignore[import-untyped]
+import pdf_converter # type: ignore[import-untyped]
 
 import sys
 from pathlib import Path
@@ -75,6 +76,7 @@ def load_config() -> Dict[str, Any]:
         "start_time": "17:00",
         "interval_hours": 4,
         "end_time": "22:00",
+        "convert_pdf_to_epub": False,
         "enews_dir": str(ENEWS_DIR),  # kann userüberschrieben werden
         "reader_master_dir": "",  # Lokales Master-Verzeichnis für Sync
         "reader_root": "",  # Reader-Root-Verzeichnis (z. B. "E:\\")
@@ -306,6 +308,9 @@ class ENewsWindow(QWidget):
         self.btn_choose_master.clicked.connect(self._choose_master_dir)
         sync_layout.addWidget(self.btn_choose_master, 1, 2)
 
+        self.chk_pdf_to_epub = QCheckBox("PDF → ePub konvertieren", self)
+        sync_layout.addWidget(self.chk_pdf_to_epub, 2, 0)
+
         self.btn_pull = QPushButton("Vom Reader holen (initial)", self)
         self.btn_pull.clicked.connect(self._pull_from_reader)
         sync_layout.addWidget(self.btn_pull, 2, 1)
@@ -332,6 +337,13 @@ class ENewsWindow(QWidget):
         self.lbl_status.setWordWrap(True)
         main_layout.addWidget(self.lbl_status)
 
+        # ----- Statuszeile (permanent, unten fixiert) -----
+        self.status_bar_label = QLabel("Bereit.", self)
+        self.status_bar_label.setStyleSheet(
+            "background-color: #606060; color: #ffffff; padding: 3px; border-top: 1px solid #999;"
+        )
+        main_layout.addWidget(self.status_bar_label)
+
         # Connects
         self.btn_add.clicked.connect(self._add_feed_row)
         self.btn_remove.clicked.connect(self._remove_selected_rows)
@@ -341,6 +353,11 @@ class ENewsWindow(QWidget):
         self.time_end.timeChanged.connect(self._update_schedule)
         self.spin_interval.valueChanged.connect(self._update_schedule)
         self.line_enews_dir.textChanged.connect(self._update_schedule)
+
+    def set_status(self, text: str) -> None:
+        """Zeigt Fortschritts-/Statusinfos in der permanenten Statuszeile."""
+        self.status_bar_label.setText(text)
+        QApplication.processEvents()  # GUI sofort aktualisieren, auch bei synchronen Läufen
 
     def _choose_enews_dir(self) -> None:
         current = self.line_enews_dir.text().strip()
@@ -426,7 +443,7 @@ class ENewsWindow(QWidget):
 
         # Status-Callback
         def on_status(msg: str):
-            self.lbl_status.setText(f"Pull: {msg}")
+            self.set_status(f"Pull: {msg}")
 
         copied, skipped, msg = sync_worker.pull_from_reader(reader_root, master_dir, status_callback=on_status)
 
@@ -491,9 +508,20 @@ class ENewsWindow(QWidget):
         if reply == QMessageBox.StandardButton.No:
             return
 
-       # Status-Callback
+        if self.chk_pdf_to_epub.isChecked():
+            self.set_status("Suche PDFs zur Konvertierung...")
+            converted, skipped_existing, skipped_not_searchable = pdf_converter.convert_pdfs_in_dir(
+                master_dir, status_callback=self.set_status
+            )
+            if converted or skipped_not_searchable:
+                self.set_status(
+                    f"PDF-Konvertierung: {converted} erzeugt, "
+                    f"{skipped_not_searchable} nicht durchsuchbar übersprungen"
+                )
+
+        # Status-Callback
         def on_status(msg: str):
-            self.lbl_status.setText(f"Sync: {msg}")
+            self.set_status(f"Sync: {msg}")
 
         copied, updated, deleted, msg = sync_worker.sync_to_reader(master_dir, reader_root, status_callback=on_status)
         self.lbl_status.setText(f"Sync: {msg}")
@@ -524,6 +552,7 @@ class ENewsWindow(QWidget):
 
         reader_root = self.config.get("reader_root", "")
         self.line_reader_root.setText(reader_root)
+        self.chk_pdf_to_epub.setChecked(self.config.get("convert_pdf_to_epub", False))
 
     def _save_config_from_ui(self) -> None:
         self.config["feeds"] = self.feeds_table.get_feeds()
@@ -534,6 +563,7 @@ class ENewsWindow(QWidget):
         self.config["enews_dir"] = self.line_enews_dir.text().strip() or str(ENEWS_DIR)
         self.config["reader_master_dir"] = self.line_reader_master.text().strip()
         self.config["reader_root"] = self.line_reader_root.text().strip()
+        self.config["convert_pdf_to_epub"] = self.chk_pdf_to_epub.isChecked()
         save_config(self.config)
 
     def _update_schedule(self) -> None:
@@ -589,19 +619,17 @@ class ENewsWindow(QWidget):
         interval = self.spin_interval.value()
         enews_dir = Path(self.line_enews_dir.text().strip() or str(ENEWS_DIR))
 
-        # Verzeichnis anlegen
         enews_dir.mkdir(parents=True, exist_ok=True)
 
-        # RSS-Feeds laden
+        self.set_status(f"Lade {len(feeds)} Feeds...")
         results = rss_worker.fetch_feeds(feeds)
 
-        # Statistik
         total_items = sum(len(r.get("items", [])) for r in results)
         errors = [r for r in results if "error" in r]
 
-        # JSON speichern (Datum als Dateiname)
         today = datetime.now().strftime("%Y-%m-%d")
         json_file = enews_dir / f"{today}.json"
+        self.set_status(f"Speichere JSON: {json_file.name}")
         try:
             with json_file.open("w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False, default=str)
@@ -609,9 +637,9 @@ class ENewsWindow(QWidget):
             self.lbl_status.setText(f"Fehler beim Schreiben der JSON-Datei: {e}")
             return
 
-        # ePub erstellen
         epub_file = enews_dir / f"{today}.epub"
         title = f"eNews {today}"
+        self.set_status(f"Erzeuge ePub: {epub_file.name}")
         try:
             epub_builder.build_epub(results, epub_file, title=title)
             epub_created = True
@@ -619,8 +647,11 @@ class ENewsWindow(QWidget):
             epub_created = False
             epub_error = str(e)
 
-        # Verzeichnis-Bereinigung
+        self.set_status("Bereinige alte Dateien...")
         deleted_count = cleanup_old_files(enews_dir, retention)
+
+        self.set_status("Bereit.")
+        # ... Rest (msg_lines usw.) unverändert
 
         # Status anzeigen
         msg_lines = [
