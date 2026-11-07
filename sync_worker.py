@@ -13,6 +13,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+import os
+import shutil
 
 # Exclude-Liste: Diese Verzeichnisse/Dateien werden nicht synchronisiert
 EXCLUDE_PATTERNS = [
@@ -44,9 +46,21 @@ def should_exclude(path: Path, base_path: Path) -> bool:
     for part in rel_path.parts:
         if part in EXCLUDE_PATTERNS:
             return True
+        if part.startswith("."):      # alle versteckten/System-Ordner und -Dateien
+            return True
 
     return False
 
+def iter_files(base: Path):
+    """Liefert alle erlaubten Dateien unter base.
+    Ausgeschlossene Ordner (Punkt-Ordner, EXCLUDE_PATTERNS) werden gar nicht erst betreten."""
+    for root, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs
+                   if not d.startswith(".") and d not in EXCLUDE_PATTERNS]
+        for name in files:
+            p = Path(root) / name
+            if not should_exclude(p, base):
+                yield p
 
 def is_enews_json(file_path: Path) -> bool:
     """
@@ -64,18 +78,21 @@ def is_enews_json(file_path: Path) -> bool:
 
 
 def files_are_identical(file1: Path, file2: Path) -> bool:
-    """
-    Vergleicht zwei Dateien auf IdentitÃ¤t (Größe und Modifikationszeit).
-
-    Rückgabe: True, wenn identisch, False sonst
-    """
+    """Gleich, wenn Größe gleich und Zeit gleich (FAT-tolerant)."""
     try:
-        stat1 = file1.stat()
-        stat2 = file2.stat()
-        return stat1.st_size == stat2.st_size and abs(stat1.st_mtime - stat2.st_mtime) < 1.0
+        s1 = file1.stat()
+        s2 = file2.stat()
+        if s1.st_size != s2.st_size:
+            return False
+        diff = abs(s1.st_mtime - s2.st_mtime)
+        # FAT: 2 s Auflösung (+ Rundung), und DST-Verschiebung um 1 h
+        if diff <= 2.5:
+            return True
+        if abs(diff - 3600) <= 2.5:
+            return True
+        return False
     except Exception:
         return False
-
 
 def pull_from_reader(
     reader_root: Path,
@@ -98,9 +115,10 @@ def pull_from_reader(
 
     copied = 0
     skipped = 0
+    errors: List[str] = []
 
     # Alle Dateien vom Reader auf den PC kopieren
-    for src_file in reader_root.rglob("*"):
+    for src_file in iter_files(reader_root):
         if not src_file.is_file():
             continue
 
@@ -129,15 +147,21 @@ def pull_from_reader(
             continue
 
         # Datei kopieren (überschreiben)
+
         try:
             shutil.copy2(str(src_file), str(dst_file))
             copied += 1
         except Exception as e:
-            pass  # Fehler ignorieren oder loggen
+            errors.append(f"{rel_path}: {e}")
+            if status_callback:
+                status_callback(f"FEHLER: {rel_path}: {e}")
 
-    msg = f"{copied} Dateien vom Reader geholt, {skipped} Übersprungen (bereits vorhanden)"
+    msg = f"{copied} Dateien vom Reader geholt, {skipped} übersprungen (bereits vorhanden)"
+    if errors:
+        msg += f"\n\n{len(errors)} FEHLER:\n" + "\n".join(errors[:10])
+        if len(errors) > 10:
+            msg += f"\n... und {len(errors) - 10} weitere"
     return copied, skipped, msg
-
 
 def sync_to_reader(
     local_dir: Path,
@@ -163,9 +187,10 @@ def sync_to_reader(
     copied = 0
     updated = 0
     deleted = 0
+    errors: List[str] = []
 
     # 1. Alle lokalen Dateien auf den Reader kopieren/aktualisieren
-    for src_file in local_dir.rglob("*"):
+    for src_file in iter_files(local_dir):
         if not src_file.is_file():
             continue
 
@@ -192,14 +217,20 @@ def sync_to_reader(
             continue
 
         # Datei kopieren (überschreiben)
+        existed = dst_file.exists()
         try:
             shutil.copy2(str(src_file), str(dst_file))
-            updated += 1
+            if existed:
+                updated += 1
+            else:
+                copied += 1
         except Exception as e:
-            pass  # Fehler ignorieren oder loggen
+            errors.append(f"{rel_path}: {e}")
+            if status_callback:
+                status_callback(f"FEHLER: {rel_path}: {e}")
 
     # 2. Alle Dateien auf dem Reader löschen, die nicht lokal existieren
-    for dst_file in list(reader_root.rglob("*")):
+    for dst_file in list(iter_files(reader_root)):
         if not dst_file.is_file():
             continue
 
@@ -214,21 +245,27 @@ def sync_to_reader(
             try:
                 dst_file.unlink()
                 deleted += 1
-            except Exception:
-                pass
+            except Exception as e:
+                errors.append(f"Löschen {rel_path}: {e}")
 
-    # 3. Leere Verzeichnisse auf dem Reader aufrÃ¤umen
-    for dirpath in sorted(reader_root.rglob("*"), reverse=True):
-        if dirpath.is_dir():
-            try:
-                if not any(dirpath.iterdir()):
-                    dirpath.rmdir()
-            except Exception:
-                pass
+    # 3. Leere Verzeichnisse auf dem Reader aufräumen (von unten nach oben)
+    for root, dirs, files in os.walk(reader_root, topdown=False):
+        rp = Path(root)
+        if rp == reader_root or should_exclude(rp, reader_root):
+            continue
+        try:
+            if not any(rp.iterdir()):
+                rp.rmdir()
+        except Exception as e:
+            errors.append(f"Ordner {rp.name}: {e}")
 
-    msg = f"Sync abgeschlossen: {updated} Dateien synchronisiert, {deleted} gelöscht"
+    msg = (f"Sync abgeschlossen: {copied} neu, {updated} aktualisiert, "
+           f"{deleted} gelöscht")
+    if errors:
+        msg += f"\n\n{len(errors)} FEHLER:\n" + "\n".join(errors[:10])
+        if len(errors) > 10:
+            msg += f"\n... und {len(errors) - 10} weitere"
     return copied, updated, deleted, msg
-
 
 if __name__ == "__main__":
     # Test-Block (nur zur Demo)
