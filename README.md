@@ -113,7 +113,7 @@ You'll find the .exe in the `dist` directory. The `--hidden-import epub_normaliz
 
 ### Normalize Text of Existing ePubs
 
-![Normalize dialog](screenshots/normalize.png)
+![Normalize dialog](screenshots/normalize.PNG)
 
 1. Make sure the **Reader master directory** is set (the dialog works on this directory).
 2. Click **"Text normalisieren …"** in the eReader-Sync group.
