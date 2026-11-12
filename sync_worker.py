@@ -163,10 +163,26 @@ def pull_from_reader(
             msg += f"\n... und {len(errors) - 10} weitere"
     return copied, skipped, msg
 
+def _purge_crosspoint_cache(reader_root: Path, rel_path: Path) -> bool:
+    """Loescht den CrossPoint-Lesecache (.crosspoint/epub_<id>) eines Buchs.
+    Die ID ist ein Hash des Pfads auf dem Reader (siehe epub_normalizer.crosspoint_cache_id)."""
+    try:
+        import epub_normalizer  # type: ignore[import-untyped]
+        cid = epub_normalizer.crosspoint_cache_id("/" + rel_path.as_posix())
+    except Exception:
+        return False
+    cache_dir = reader_root / ".crosspoint" / cid
+    if cache_dir.is_dir():
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        return True
+    return False
+
+
 def sync_to_reader(
     local_dir: Path,
     reader_root: Path,
     status_callback: Optional[Callable[[str], None]] = None,
+    purge_cache: bool = False,
 ) -> Tuple[int, int, int, str]:
     """
     Spiegelt den lokalen Stand auf den Reader.
@@ -187,6 +203,7 @@ def sync_to_reader(
     copied = 0
     updated = 0
     deleted = 0
+    purged = 0
     errors: List[str] = []
 
     # 1. Alle lokalen Dateien auf den Reader kopieren/aktualisieren
@@ -222,6 +239,9 @@ def sync_to_reader(
             shutil.copy2(str(src_file), str(dst_file))
             if existed:
                 updated += 1
+                if purge_cache and src_file.suffix.lower() == ".epub":
+                    if _purge_crosspoint_cache(reader_root, rel_path):
+                        purged += 1
             else:
                 copied += 1
         except Exception as e:
@@ -245,6 +265,9 @@ def sync_to_reader(
             try:
                 dst_file.unlink()
                 deleted += 1
+                if purge_cache and dst_file.suffix.lower() == ".epub":
+                    if _purge_crosspoint_cache(reader_root, rel_path):
+                        purged += 1
             except Exception as e:
                 errors.append(f"Löschen {rel_path}: {e}")
 
@@ -261,6 +284,8 @@ def sync_to_reader(
 
     msg = (f"Sync abgeschlossen: {copied} neu, {updated} aktualisiert, "
            f"{deleted} gelöscht")
+    if purge_cache:
+        msg += f", {purged} Lese-Caches gelöscht"
     if errors:
         msg += f"\n\n{len(errors)} FEHLER:\n" + "\n".join(errors[:10])
         if len(errors) > 10:

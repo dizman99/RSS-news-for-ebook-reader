@@ -45,6 +45,7 @@ import rss_worker  # type: ignore[import-untyped]
 import epub_builder  # type: ignore[import-untyped]
 import sync_worker  # type: ignore[import-untyped]
 import pdf_converter # type: ignore[import-untyped]
+import normalize_dialog  # type: ignore[import-untyped]
 
 import sys
 from pathlib import Path
@@ -77,6 +78,8 @@ def load_config() -> Dict[str, Any]:
         "interval_hours": 4,
         "end_time": "22:00",
         "convert_pdf_to_epub": False,
+        "purge_cache": False,        # Reader-Lesecache geaenderter ePubs beim Sync loeschen
+        "normalize": {},             # Einstellungen des Dialogs "Text normalisieren"
         "enews_dir": str(ENEWS_DIR),  # kann userüberschrieben werden
         "reader_master_dir": "",  # Lokales Master-Verzeichnis für Sync
         "reader_root": "",  # Reader-Root-Verzeichnis (z. B. "E:\\")
@@ -319,6 +322,15 @@ class ENewsWindow(QWidget):
         self.btn_sync.clicked.connect(self._sync_to_reader)
         sync_layout.addWidget(self.btn_sync, 2, 2)
 
+        self.btn_normalize = QPushButton("Text normalisieren …", self)
+        self.btn_normalize.clicked.connect(self._open_normalize_dialog)
+        sync_layout.addWidget(self.btn_normalize, 3, 0)
+
+        self.chk_purge_cache = QCheckBox("Lese-Cache geänderter ePubs auf dem Reader löschen", self)
+        self.chk_purge_cache.setToolTip("Löscht beim Sync .crosspoint/epub_<ID> nur für aktualisierte "
+                                        "oder gelöschte ePubs (CrossPoint-Firmware).")
+        sync_layout.addWidget(self.chk_purge_cache, 3, 1, 1, 2)
+
         main_layout.addWidget(sync_group)
 
         # ----- Buttons -----
@@ -523,9 +535,28 @@ class ENewsWindow(QWidget):
         def on_status(msg: str):
             self.set_status(f"Sync: {msg}")
 
-        copied, updated, deleted, msg = sync_worker.sync_to_reader(master_dir, reader_root, status_callback=on_status)
+        copied, updated, deleted, msg = sync_worker.sync_to_reader(
+            master_dir, reader_root, status_callback=on_status,
+            purge_cache=self.chk_purge_cache.isChecked(),
+        )
         self.lbl_status.setText(f"Sync: {msg}")
         QMessageBox.information(self, "Sync", msg)
+
+    def _open_normalize_dialog(self) -> None:
+        """Dialog 'Text normalisieren' auf dem Master-Verzeichnis oeffnen."""
+        self._save_config_from_ui()
+        master_str = self.line_reader_master.text().strip()
+        if not master_str:
+            QMessageBox.warning(self, "Normalisieren", "Bitte Reader-Master-Verzeichnis angeben.")
+            return
+        master = Path(master_str)
+        if not master.is_dir():
+            QMessageBox.warning(self, "Normalisieren", "Reader-Master-Verzeichnis existiert nicht.")
+            return
+        dlg = normalize_dialog.NormalizeDialog(self, master, self.config.get("normalize", {}))
+        dlg.exec()
+        self.config["normalize"] = dlg.get_options()
+        save_config(self.config)
 
     def _load_config_to_ui(self) -> None:
         feeds = self.config.get("feeds", [])
@@ -553,6 +584,7 @@ class ENewsWindow(QWidget):
         reader_root = self.config.get("reader_root", "")
         self.line_reader_root.setText(reader_root)
         self.chk_pdf_to_epub.setChecked(self.config.get("convert_pdf_to_epub", False))
+        self.chk_purge_cache.setChecked(self.config.get("purge_cache", False))
 
     def _save_config_from_ui(self) -> None:
         self.config["feeds"] = self.feeds_table.get_feeds()
@@ -564,6 +596,7 @@ class ENewsWindow(QWidget):
         self.config["reader_master_dir"] = self.line_reader_master.text().strip()
         self.config["reader_root"] = self.line_reader_root.text().strip()
         self.config["convert_pdf_to_epub"] = self.chk_pdf_to_epub.isChecked()
+        self.config["purge_cache"] = self.chk_purge_cache.isChecked()
         save_config(self.config)
 
     def _update_schedule(self) -> None:
