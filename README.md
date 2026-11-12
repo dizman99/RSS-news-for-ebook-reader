@@ -2,7 +2,7 @@
 
 A compact tool for Windows that allows generating ePub files from RSS feeds. Additionally, it provides complete eReader synchronization and a text normalizer that cleans up badly structured ePubs. The special feature is that initially a complete copy of the eReader is pulled to the PC. Afterwards, this directory serves as the master. This means you only work with this directory. If you want to delete eBooks, you delete them from the PC directory. If you want new ones on the reader, you copy them to the PC directory as well. During "Sync", the eReader becomes a "mirror" of the PC directory – just like Dropbox.
 
-![Main View](screenshots/main.png)
+![Main View](screenshots/main.PNG)
 
 ---
 
